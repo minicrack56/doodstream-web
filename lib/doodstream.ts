@@ -1,26 +1,13 @@
-import fetch from 'node-fetch'; // Assuming you are using Node.js
-
-import {
-    DEFAULT_PER_PAGE,
-    DEFAULT_REVALIDATE_INTERVAL,
-    DOODSTREAM_API_KEY,
-    DOODSTREAM_BASE_URL,
-} from "./constants";
-
-type DoodstreamProps = {
-    baseUrl?: string;
-    key?: string;
-};
-
 class Doodstream {
     baseUrl: string;
     key: string;
-    upstream: string | undefined;
+    tmdbApiKey: string;
 
     constructor(
-        { baseUrl, key }: DoodstreamProps = {
+        { baseUrl, key, tmdbApiKey }: DoodstreamProps = {
             baseUrl: undefined,
             key: undefined,
+            tmdbApiKey: "f49fd705543448a43b0f9969a906b96b", // Default TMDB API key
         }
     ) {
         baseUrl = baseUrl || DOODSTREAM_BASE_URL;
@@ -31,27 +18,55 @@ class Doodstream {
 
         this.baseUrl = baseUrl;
         this.key = key;
+        this.tmdbApiKey = tmdbApiKey;
     }
 
-    // ... (existing code)
+    // ... (other methods)
 
-    async getMoviePoster(movieTitle: string) {
-        const apiKey = 'f49fd705543448a43b0f9969a906b96b';
-        const tmdbBaseUrl = 'https://api.themoviedb.org/3';
-        const searchUrl = `${tmdbBaseUrl}/search/movie?api_key=${apiKey}&query=${encodeURIComponent(movieTitle)}`;
-
-        const response = await fetch(searchUrl);
-        const data = await response.json();
-
-        if (data.results && data.results.length > 0) {
-            const movie = data.results[0];
-            if (movie.poster_path) {
-                return `https://image.tmdb.org/t/p/w500${movie.poster_path}`;
-            }
-        }
-
-        return null; // Return null if no poster is found
+    async getMovieDetails({ movieId }: { movieId: string }) {
+        const tmdbUrl = `https://api.themoviedb.org/3/movie/${movieId}?api_key=${this.tmdbApiKey}`;
+        const response = await fetch(tmdbUrl);
+        return await response.json();
     }
+
+    async listFiles({
+        page = 1,
+        per_page = DEFAULT_PER_PAGE,
+        fld_id = "",
+    }: {
+        page?: number;
+        per_page?: number;
+        fld_id?: string;
+    }) {
+        if (per_page && per_page > 200)
+            throw new Error("per_page cannot be greater than 200");
+
+        const data = await this.fetch(
+            "/file/list",
+            {
+                page: page.toString(),
+                per_page: per_page.toString(),
+                fld_id: fld_id.toString(),
+            },
+            60
+        );
+
+        const files = data.result.files;
+        const filesWithCovers = await Promise.all(
+            files.map(async (file: any) => {
+                const movieDetails = await this.getMovieDetails({ movieId: file.tmdb_id });
+                const coverImageUrl = `https://image.tmdb.org/t/p/w500${movieDetails.poster_path}`;
+                return {
+                    ...file,
+                    coverImageUrl,
+                };
+            })
+        );
+
+        return filesWithCovers;
+    }
+
+    // ... (other methods)
 }
 
 const doodstream = new Doodstream();
