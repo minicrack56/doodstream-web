@@ -1,3 +1,5 @@
+import fetch from 'node-fetch'; // Assuming you are using Node.js
+
 import {
     DEFAULT_PER_PAGE,
     DEFAULT_REVALIDATE_INTERVAL,
@@ -31,94 +33,24 @@ class Doodstream {
         this.key = key;
     }
 
-    serializeQueryParams(params: { [key: string]: string }) {
-        return new URLSearchParams(params).toString();
-    }
+    // ... (existing code)
 
-    async fetch(
-        cmd: string,
-        params: { [key: string]: string },
-        revalidate?: number
-    ) {
-        params.key = this.key;
-        const url = `${this.baseUrl}/api${cmd}?${this.serializeQueryParams(
-            params
-        )}`;
-        const response = await fetch(url, {
-            next: { revalidate: revalidate || DEFAULT_REVALIDATE_INTERVAL },
-        });
-        return await response.json();
-    }
+    async getMoviePoster(movieTitle: string) {
+        const apiKey = 'f49fd705543448a43b0f9969a906b96b';
+        const tmdbBaseUrl = 'https://api.themoviedb.org/3';
+        const searchUrl = `${tmdbBaseUrl}/search/movie?api_key=${apiKey}&query=${encodeURIComponent(movieTitle)}`;
 
-    async listFiles({
-        page = 1,
-        per_page = DEFAULT_PER_PAGE,
-        fld_id = "",
-    }: {
-        page?: number;
-        per_page?: number;
-        fld_id?: string;
-    }) {
-        if (per_page && per_page > 200)
-            throw new Error("per_page cannot be greater than 200");
+        const response = await fetch(searchUrl);
+        const data = await response.json();
 
-        const data = await this.fetch(
-            "/file/list",
-            {
-                page: page.toString(),
-                per_page: per_page.toString(),
-                fld_id: fld_id.toString(),
-            },
-            60
-        );
-        return data;
-    }
+        if (data.results && data.results.length > 0) {
+            const movie = data.results[0];
+            if (movie.poster_path) {
+                return `https://image.tmdb.org/t/p/w500${movie.poster_path}`;
+            }
+        }
 
-    async getFile({ file_code }: { file_code: string }) {
-        const data = await this.fetch("/file/info", { file_code });
-        return data;
-    }
-
-    async search({ query }: { query: string }) {
-        const data = await this.fetch(
-            "/search/videos",
-            { search_term: query },
-            60
-        );
-        return data;
-    }
-
-    async listFolders({ fld_id = "" }: { fld_id?: string }) {
-        const data = await this.fetch("/folder/list", {
-            only_folders: "1",
-            fld_id,
-        });
-        return data;
-    }
-
-    async getFolder({ fld_id }: { fld_id: string }) {
-        const data = await this.listFolders({ fld_id: "" });
-        const folder = data.result.folders.find(
-            (f: any) => f.fld_id === fld_id
-        );
-        return {
-            ...data,
-            folder,
-        };
-    }
-
-    async getUpstream() {
-        if (this.upstream) return this.upstream;
-
-        const data = await this.listFiles({ page: 1, per_page: 1 });
-        const sampleFile = data.result.files[0];
-        const url = new URL(sampleFile.download_url);
-        this.upstream = url.hostname;
-
-        setTimeout(() => {
-            this.upstream = undefined;
-        }, DEFAULT_REVALIDATE_INTERVAL * 1000);
-        return url.hostname;
+        return null; // Return null if no poster is found
     }
 }
 
